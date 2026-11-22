@@ -1,7 +1,0 @@
-.buildozer/
-bin/
-*.apk
-*.aab
-*.aar
-__pycache__/
-*.py[cod]
