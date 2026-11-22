@@ -37,6 +37,7 @@ jobs:
             -o libs/hev-socks5-tunnel.aar
           unzip -t libs/hev-socks5-tunnel.aar
           unzip -l libs/hev-socks5-tunnel.aar | grep -E 'classes.jar|jni/arm64-v8a/libhev-socks5-tunnel.so|jni/armeabi-v7a/libhev-socks5-tunnel.so'
+          unzip -p libs/hev-socks5-tunnel.aar META-INF/com/android/build/gradle/aar-metadata.properties
 
       - name: Install Android SDK
         run: |
@@ -96,8 +97,8 @@ jobs:
         if: failure()
         run: |
           if [ -f build.log ]; then
-            grep -i -n -E 'error|fatal|failed|denied|not found|Traceback|CRITICAL' build.log | tail -n 80 || true
-            tail -n 160 build.log | head -c 30000
+            grep -B5 -A25 'checkDebugAarMetadata\|FAILURE: Build failed' build.log || true
+            grep -i -n -E 'minCompileSdk|minSdkVersion|requires libraries' build.log | head -n 20 || true
           fi
 
       - name: Upload APK
