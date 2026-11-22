@@ -1,0 +1,131 @@
+name: Build ProxyGUI VPN APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip unzip build-essential ccache libltdl-dev libtool pkg-config autoconf automake curl
+          pip install --upgrade pip
+          pip install buildozer cython
+
+      - name: Download official HevSocks5Tunnel AAR
+        run: |
+          mkdir -p libs
+          curl --fail --location --retry 4 --retry-delay 3 \
+            https://github.com/heiher/hev-socks5-tunnel/releases/download/2.20.0/hev-socks5-tunnel.aar \
+            -o libs/hev-socks5-tunnel.aar
+          unzip -t libs/hev-socks5-tunnel.aar
+          unzip -l libs/hev-socks5-tunnel.aar | grep -E 'classes.jar|jni/arm64-v8a/libhev-socks5-tunnel.so|jni/armeabi-v7a/libhev-socks5-tunnel.so'
+
+      - name: Install Android SDK
+        run: |
+          SDK_DIR=$HOME/.buildozer/android/platform/android-sdk
+          mkdir -p "$SDK_DIR/cmdline-tools"
+          curl --fail --location --retry 4 \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+            -o /tmp/cmdtools.zip
+          unzip -q /tmp/cmdtools.zip -d "$SDK_DIR/cmdline-tools"
+          mv "$SDK_DIR/cmdline-tools/cmdline-tools" "$SDK_DIR/cmdline-tools/latest"
+          rm -rf "$SDK_DIR/tools"
+          ln -s "$SDK_DIR/cmdline-tools/latest" "$SDK_DIR/tools"
+          export PATH="$SDK_DIR/cmdline-tools/latest/bin:$PATH"
+          echo "ANDROID_HOME=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> "$GITHUB_ENV"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+          mkdir -p "$SDK_DIR/licenses"
+          printf '8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n' > "$SDK_DIR/licenses/android-sdk-license"
+          printf '84831b9409646a918e30573bab4c9c91346d8abd\n' > "$SDK_DIR/licenses/android-sdk-preview-license"
+          echo "$SDK_DIR/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+      - name: Prepare python-for-android and manifest XML support
+        run: |
+          P4A_DIR=$HOME/.buildozer/android/platform/python-for-android
+          if [ ! -d "$P4A_DIR/.git" ]; then
+            git clone -b v2024.01.21 --single-branch https://github.com/kivy/python-for-android.git "$P4A_DIR"
+          fi
+          python - <<'PY'
+          from pathlib import Path
+          import buildozer.targets.android as android_target
+
+          # Add the p4a parser argument and insert the XML fragment inside <application>.
+          p4a = Path.home() / '.buildozer/android/platform/python-for-android'
+          parser = p4a / 'pythonforandroid/bootstraps/common/build/build.py'
+          src = parser.read_text()
+          marker = "ap.add_argument('--extra-manifest-application-arguments'"
+          if "--extra-manifest-application-xml" not in src:
+              if marker not in src:
+                  raise SystemExit('Cannot patch p4a manifest parser: marker not found')
+              src = src.replace(marker,
+                  "ap.add_argument('--extra-manifest-application-xml', default='', help='Extra XML inside application')\n    " + marker, 1)
+              parser.write_text(src)
+
+          template = p4a / 'pythonforandroid/bootstraps/sdl2/build/templates/AndroidManifest.tmpl.xml'
+          src = template.read_text()
+          marker = 'android:extractNativeLibs=\"true\" >'
+          if '{{ args.extra_manifest_application_xml }}' not in src:
+              if marker not in src:
+                  raise SystemExit('Cannot patch p4a manifest template: application body marker not found')
+              src = src.replace(marker, marker + '\n        {{ args.extra_manifest_application_xml }}', 1)
+              template.write_text(src)
+
+          # Teach Buildozer to pass the new p4a argument from buildozer.spec.
+          target = Path(android_target.__file__)
+          src = target.read_text()
+          marker = '# support for gradle dependencies'
+          if 'android.extra_manifest_application_xml' not in src:
+              block = '''        extra_manifest_application_xml = self.buildozer.config.get(\n            'app', 'android.extra_manifest_application_xml', fallback='')\n        if extra_manifest_application_xml:\n            cmd.append('--extra-manifest-application-xml')\n            cmd.append(open(extra_manifest_application_xml, 'rt').read())\n\n        '''
+              if marker not in src:
+                  raise SystemExit('Cannot patch Buildozer manifest arguments: marker not found')
+              src = src.replace(marker, block + marker, 1)
+              target.write_text(src)
+          print('Custom Android VPN manifest declarations are wired into the build.')
+          PY
+
+      - name: Verify Python and Java sources
+        run: |
+          python -m py_compile main.py
+          test -f src/android/org/proxygui/proxygui/ProxyVpnService.java
+          test -f libs/hev-socks5-tunnel.aar
+
+      - name: Build APK
+        run: |
+          set -o pipefail
+          buildozer -v android debug 2>&1 | tee build.log
+
+      - name: Show build errors
+        if: failure()
+        run: |
+          if [ -f build.log ]; then
+            grep -i -n -E 'error|fatal|failed|denied|not found|Traceback|CRITICAL' build.log | tail -n 80 || true
+            tail -n 160 build.log | head -c 30000
+          fi
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proxygui-vpn-debug-apk
+          path: bin/*.apk
+          if-no-files-found: error
