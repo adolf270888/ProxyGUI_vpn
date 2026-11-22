@@ -9,7 +9,6 @@ requirements = python3,kivy,certifi,pyjnius
 orientation = portrait
 fullscreen = 0
 android.extra_manifest_application_arguments = manifest_args.txt
-android.extra_manifest_application_xml = src/android/extra_manifest_application.xml
 android.add_src = src/android
 android.add_aars = libs/hev-socks5-tunnel.aar
 android.permissions = INTERNET,POST_NOTIFICATIONS,FOREGROUND_SERVICE,FOREGROUND_SERVICE_SPECIAL_USE
