@@ -59,49 +59,27 @@ jobs:
           printf '84831b9409646a918e30573bab4c9c91346d8abd\n' > "$SDK_DIR/licenses/android-sdk-preview-license"
           echo "$SDK_DIR/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
-      - name: Prepare python-for-android and manifest XML support
+      - name: Clone pinned p4a to a stable path
         run: |
-          P4A_DIR=$HOME/.buildozer/android/platform/python-for-android
-          if [ ! -d "$P4A_DIR/.git" ]; then
-            git clone -b v2024.01.21 --single-branch https://github.com/kivy/python-for-android.git "$P4A_DIR"
-          fi
+          git clone -b v2024.01.21 --single-branch \
+            https://github.com/kivy/python-for-android.git /home/runner/p4a
+
+      - name: Patch p4a manifest template with VPN declarations
+        run: |
           python - <<'PY'
           from pathlib import Path
-          import buildozer.targets.android as android_target
-
-          # Add the p4a parser argument and insert the XML fragment inside <application>.
-          p4a = Path.home() / '.buildozer/android/platform/python-for-android'
-          parser = p4a / 'pythonforandroid/bootstraps/common/build/build.py'
-          src = parser.read_text()
-          marker = "ap.add_argument('--extra-manifest-application-arguments'"
-          if "--extra-manifest-application-xml" not in src:
-              if marker not in src:
-                  raise SystemExit('Cannot patch p4a manifest parser: marker not found')
-              src = src.replace(marker,
-                  "ap.add_argument('--extra-manifest-application-xml', default='', help='Extra XML inside application')\n    " + marker, 1)
-              parser.write_text(src)
-
-          template = p4a / 'pythonforandroid/bootstraps/sdl2/build/templates/AndroidManifest.tmpl.xml'
+          template = Path('/home/runner/p4a/pythonforandroid/'
+                          'bootstraps/common/build/templates/AndroidManifest.tmpl.xml')
+          fragment = Path('src/android/extra_manifest_application.xml').read_text()
           src = template.read_text()
-          marker = 'android:extractNativeLibs=\"true\" >'
-          if '{{ args.extra_manifest_application_xml }}' not in src:
+          if 'org.proxygui.proxygui.ProxyVpnService' not in src:
+              marker = '</application>'
               if marker not in src:
-                  raise SystemExit('Cannot patch p4a manifest template: application body marker not found')
-              src = src.replace(marker, marker + '\n        {{ args.extra_manifest_application_xml }}', 1)
-              template.write_text(src)
-
-          # Teach Buildozer to pass the new p4a argument from buildozer.spec.
-          target = Path(android_target.__file__)
-          src = target.read_text()
-          marker = '# support for gradle dependencies'
-          if 'android.extra_manifest_application_xml' not in src:
-              block = '''        extra_manifest_application_xml = self.buildozer.config.get(\n            'app', 'android.extra_manifest_application_xml', fallback='')\n        if extra_manifest_application_xml:\n            cmd.append('--extra-manifest-application-xml')\n            cmd.append(open(extra_manifest_application_xml, 'rt').read())\n\n        '''
-              if marker not in src:
-                  raise SystemExit('Cannot patch Buildozer manifest arguments: marker not found')
-              src = src.replace(marker, block + marker, 1)
-              target.write_text(src)
-          print('Custom Android VPN manifest declarations are wired into the build.')
+                  raise SystemExit('marker </application> not found in template')
+              template.write_text(src.replace(marker, fragment + '\n' + marker, 1))
+          print('p4a manifest template patched')
           PY
+
 
       - name: Verify Python and Java sources
         run: |
