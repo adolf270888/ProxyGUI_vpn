@@ -1,0 +1,18 @@
+<activity
+    android:name="org.proxygui.proxygui.ProxyVpnPermissionActivity"
+    android:exported="false"
+    android:excludeFromRecents="true"
+    android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+<service
+    android:name="org.proxygui.proxygui.ProxyVpnService"
+    android:permission="android.permission.BIND_VPN_SERVICE"
+    android:exported="true"
+    android:stopWithTask="false"
+    android:foregroundServiceType="specialUse">
+    <intent-filter>
+        <action android:name="android.net.VpnService" />
+    </intent-filter>
+    <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="SOCKS5 VPN tunnel for device traffic" />
+</service>
