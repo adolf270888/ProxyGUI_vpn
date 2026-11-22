@@ -21,6 +21,7 @@ android.archs = arm64-v8a,armeabi-v7a
 presplash.color = #1e1e24
 window.resize_with_keyboard = 1
 p4a.branch = v2024.01.21
+p4a.source_dir = /home/runner/p4a
 
 [buildozer]
 log_level = 2
