@@ -69,7 +69,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           template = Path('/home/runner/p4a/pythonforandroid/'
-                          'bootstraps/common/build/templates/AndroidManifest.tmpl.xml')
+                          'bootstraps/sdl2/build/templates/AndroidManifest.tmpl.xml')
           fragment = Path('src/android/extra_manifest_application.xml').read_text()
           src = template.read_text()
           if 'org.proxygui.proxygui.ProxyVpnService' not in src:
