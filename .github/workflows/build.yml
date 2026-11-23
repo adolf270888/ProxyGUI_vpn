@@ -92,7 +92,7 @@ jobs:
 
           # 2) flatDir-репозиторий для локальных AAR
           gradle_tmpl = Path('/home/runner/p4a/pythonforandroid/'
-                             'bootstraps/sdl2/build/build.gradle.tmpl')
+                             'bootstraps/sdl2/build/templates/build.tmpl.gradle')
           src = gradle_tmpl.read_text()
           if 'flatDir' not in src:
               new, n = re.subn(r"(allprojects\s*\{\s*repositories\s*\{)",
@@ -100,7 +100,7 @@ jobs:
                                src, count=1)
               if n == 0:
                   raise SystemExit('allprojects/repositories block not found '
-                                   'in build.gradle.tmpl')
+                                   'in build.tmpl.gradle')
               gradle_tmpl.write_text(new)
 
           print('p4a templates patched')
