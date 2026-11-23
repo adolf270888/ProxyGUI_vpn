@@ -79,9 +79,10 @@ jobs:
           import re
           from pathlib import Path
 
+          p4a = Path('/home/runner/p4a')
+
           # 1) VPN-декларации в манифесте (как раньше)
-          template = Path('/home/runner/p4a/pythonforandroid/'
-                          'bootstraps/sdl2/build/templates/AndroidManifest.tmpl.xml')
+          template = p4a / 'pythonforandroid/bootstraps/sdl2/build/templates/AndroidManifest.tmpl.xml'
           fragment = Path('src/android/extra_manifest_application.xml').read_text()
           src = template.read_text()
           if 'org.proxygui.proxygui.ProxyVpnService' not in src:
@@ -89,21 +90,27 @@ jobs:
               if marker not in src:
                   raise SystemExit('marker </application> not found in template')
               template.write_text(src.replace(marker, fragment + '\n' + marker, 1))
+          print('manifest template patched')
 
-          # 2) flatDir-репозиторий для локальных AAR
-          gradle_tmpl = Path('/home/runner/p4a/pythonforandroid/'
-                             'bootstraps/sdl2/build/templates/build.tmpl.gradle')
+          # 2) flatDir-репозиторий: ищем gradle-шаблон рекурсивно
+          candidates = sorted(p4a.glob('pythonforandroid/bootstraps/*/build/templates/*gradle*'))
+          print('gradle template candidates:')
+          for p in candidates:
+              print('   ', p)
+          gradle_tmpl = next((p for p in candidates
+                              if 'repositories' in p.read_text()), None)
+          if gradle_tmpl is None:
+              raise SystemExit('gradle template not found — see candidates above')
           src = gradle_tmpl.read_text()
           if 'flatDir' not in src:
               new, n = re.subn(r"(allprojects\s*\{\s*repositories\s*\{)",
                                r"\1\n        flatDir { dirs 'libs' }",
                                src, count=1)
               if n == 0:
-                  raise SystemExit('allprojects/repositories block not found '
-                                   'in build.tmpl.gradle')
+                  raise SystemExit('allprojects/repositories block not found in '
+                                   + str(gradle_tmpl))
               gradle_tmpl.write_text(new)
-
-          print('p4a templates patched')
+          print('patched:', gradle_tmpl)
           PY
 
       - name: Verify Python and Java sources
