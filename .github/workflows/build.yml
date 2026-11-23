@@ -73,10 +73,13 @@ jobs:
           git clone -b v2024.01.21 --single-branch \
             https://github.com/kivy/python-for-android.git /home/runner/p4a
 
-      - name: Patch p4a manifest template with VPN declarations
+      - name: Patch p4a manifest and gradle templates
         run: |
           python - <<'PY'
+          import re
           from pathlib import Path
+
+          # 1) VPN-декларации в манифесте (как раньше)
           template = Path('/home/runner/p4a/pythonforandroid/'
                           'bootstraps/sdl2/build/templates/AndroidManifest.tmpl.xml')
           fragment = Path('src/android/extra_manifest_application.xml').read_text()
@@ -86,9 +89,22 @@ jobs:
               if marker not in src:
                   raise SystemExit('marker </application> not found in template')
               template.write_text(src.replace(marker, fragment + '\n' + marker, 1))
-          print('p4a manifest template patched')
-          PY
 
+          # 2) flatDir-репозиторий для локальных AAR
+          gradle_tmpl = Path('/home/runner/p4a/pythonforandroid/'
+                             'bootstraps/sdl2/build/build.gradle.tmpl')
+          src = gradle_tmpl.read_text()
+          if 'flatDir' not in src:
+              new, n = re.subn(r"(allprojects\s*\{\s*repositories\s*\{)",
+                               r"\1\n        flatDir { dirs 'libs' }",
+                               src, count=1)
+              if n == 0:
+                  raise SystemExit('allprojects/repositories block not found '
+                                   'in build.gradle.tmpl')
+              gradle_tmpl.write_text(new)
+
+          print('p4a templates patched')
+          PY
 
       - name: Verify Python and Java sources
         run: |
